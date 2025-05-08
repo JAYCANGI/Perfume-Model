@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    volumes:
+      - ./data:/data

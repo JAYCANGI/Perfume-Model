@@ -1,0 +1,11 @@
+streamlit
+pandas
+requests
+altair
+pydeck
+geopy
+numpy
+scikit-learn
+streamlit-folium
+folium
+joblib
