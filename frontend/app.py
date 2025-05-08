@@ -119,18 +119,6 @@ with tab_mapa:
         tooltip={"text": "{Country}: {count} perfumes"}
     ))
 # ---------- TAB 3: RECOMENDADOR ----------
-#Loader del modelo
-import pickle
-import numpy as np
-import pandas as pd
-import streamlit as st
-import os
-import joblib
-
-model = joblib.load("frontend/best_rf_perfume_fast.pkl")
-model_columns = joblib.load("frontend/model_columns_perfume.pkl")
-
-    
 with tab_modelo:
     st.markdown("## 🤖 Recomendador de Rating de Perfume")
 
@@ -159,37 +147,65 @@ with tab_modelo:
         i = np.argmax(preds)
         return labels[i], preds[i]
 
+    # ———————————————
+    # Limpiar y extraer etiquetas únicas para multiselect
+    def get_unique_note_values(series):
+        return sorted(set(
+            note.strip().lower()
+            for entry in series.dropna()
+            for note in str(entry).split(',')
+            if note.strip()
+        ))
+
     with st.form("perfume_form"):
-        country = st.selectbox("🌍 País de lanzamiento", 
-            sorted([c.replace("Country_", "") for c in model_columns if c.startswith("Country_")]))
-        gender  = st.selectbox("🧍 Género", ["Male", "Female"])
-        tops    = st.text_input("Notas Top (coma):", value="bergamot, aldehydes").split(",")
-        middles = st.text_input("Notas Middle (coma):", value="jasmine").split(",")
-        bases   = st.text_input("Notas Base (coma):", value="musk, amber").split(",")
-        accords = [st.text_input(f"Acorde Principal {i+1}", "") for i in range(3)]
+        # Opciones limpias
+        country_options = sorted(df['country'].dropna().unique()) if 'country' in df.columns else []
+        gender_options = sorted(df['Gender'].dropna().unique()) if 'Gender' in df.columns else ["Male", "Female", "Unisex"]
+
+        top_note_options = get_unique_note_values(df['Top']) if 'Top' in df.columns else []
+        middle_note_options = get_unique_note_values(df['Middle']) if 'Middle' in df.columns else []
+        base_note_options = get_unique_note_values(df['Base']) if 'Base' in df.columns else []
+
+        # Acordes desde columnas mainaccord
+        if any(col.startswith('mainaccord') for col in df.columns):
+            accord_cols = [col for col in df.columns if col.startswith('mainaccord')]
+            accord_series = df[accord_cols].astype(str).apply(lambda x: ','.join(x), axis=1)
+            accord_options = get_unique_note_values(accord_series)
+        else:
+            accord_options = []
+
+        # Campos del formulario
+        country = st.selectbox("🌍 País de lanzamiento", country_options)
+        gender = st.selectbox("🧍 Género", gender_options)
+        tops = st.multiselect("Notas Top:", top_note_options, default=top_note_options[:2])
+        middles = st.multiselect("Notas Middle:", middle_note_options, default=middle_note_options[:2])
+        bases = st.multiselect("Notas Base:", base_note_options, default=base_note_options[:2])
+        accords = st.multiselect("Acordes Principales:", accord_options, default=accord_options[:3])
+
+        # Botón para enviar
         submitted = st.form_submit_button("📈 Calcular rating y recomendaciones")
 
-    if submitted:
-        base_dict = build_input_row_dict(country, gender, tops, middles, bases, accords, model_columns)
-        X_base = pd.DataFrame([base_dict]).reindex(columns=model_columns, fill_value=0)
-        current_rating = model.predict(X_base)[0]
-        st.metric("⭐ Rating estimado", f"{current_rating:.2f}")
+        if submitted:
+            base_dict = build_input_row_dict(country, gender, tops, middles, bases, accords, model_columns)
+            X_base = pd.DataFrame([base_dict]).reindex(columns=model_columns, fill_value=0)
+            current_rating = model.predict(X_base)[0]
+            st.metric("⭐ Rating estimado", f"{current_rating:.2f}")
 
-        # Recomendaciones
-        all_top  = [c.replace("Note_Top_", "") for c in model_columns if c.startswith("Note_Top_")]
-        all_mid  = [c.replace("Note_Middle_", "") for c in model_columns if c.startswith("Note_Middle_")]
-        all_base = [c.replace("Note_Base_", "") for c in model_columns if c.startswith("Note_Base_")]
-        all_acc  = [c.replace("Accord_", "") for c in model_columns if c.startswith("Accord_")]
+            # Recomendaciones
+            all_top = [c.replace("Note_Top_", "") for c in model_columns if c.startswith("Note_Top_")]
+            all_mid = [c.replace("Note_Middle_", "") for c in model_columns if c.startswith("Note_Middle_")]
+            all_base = [c.replace("Note_Base_", "") for c in model_columns if c.startswith("Note_Base_")]
+            all_acc = [c.replace("Accord_", "") for c in model_columns if c.startswith("Accord_")]
 
-        st.subheader("🔧 Cambios sugeridos")
-        for name, items, all_opts, pref in [
-            ("Top Note", tops, all_top, "Note_Top"),
-            ("Middle Note", middles, all_mid, "Note_Middle"),
-            ("Base Note", bases, all_base, "Note_Base"),
-            ("Accord", accords, all_acc, "Accord")
-        ]:
-            change, pred = recommend_one(base_dict, current_rating, all_opts, items, pref, model, model_columns)
-            if change:
-                st.write(f"- Sustituir un {name} por *{change}* → rating estimado: {pred:.2f}")
-            else:
-                st.write(f"- No se encontró mejora cambiando un {name.lower()}.")
+            st.subheader("🔧 Cambios sugeridos")
+            for name, items, all_opts, pref in [
+                ("Top Note", tops, all_top, "Note_Top"),
+                ("Middle Note", middles, all_mid, "Note_Middle"),
+                ("Base Note", bases, all_base, "Note_Base"),
+                ("Accord", accords, all_acc, "Accord")
+            ]:
+                change, pred = recommend_one(base_dict, current_rating, all_opts, items, pref, model, model_columns)
+                if change:
+                    st.write(f"- Sustituir un {name} por *{change}* → rating estimado: {pred:.2f}")
+                else:
+                    st.write(f"- No se encontró mejora cambiando un {name.lower()}.")
