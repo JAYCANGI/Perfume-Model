@@ -25,7 +25,7 @@ df['rating'] = pd.to_numeric(df['Rating Value'], errors='coerce').round(2)
 df['votes'] = df['Rating Count'].astype(int)
 df['brand'] = df['Brand'].str.replace(r'[^a-zA-Z0-9\s]', '', regex=True).str.strip()
 df['brand'] = df['brand'].str.replace(r'\s+', ' ', regex=True).str.title().str.strip()
-df['sales'] = (df['rating'] * df['votes'] * 1000).astype(int)
+df['sales'] = (df['rating'] * df['votes'] * 100).astype(int)
 
 # Crear pestañas
 tab_datos, tab_graficos, tab_mapa, tab_modelo = st.tabs(["📋 Datos", "📊 Gráficos", "🗺️ Mapa","🤖 Modelo"])
@@ -45,21 +45,6 @@ with tab_datos:
 with tab_graficos:
     alt.themes.enable('fivethirtyeight')
 
-    # Ventas por Marca
-    st.markdown("### 🏷️ Ventas por Marca")
-    sales_by_brand = df.groupby("brand")["sales"].sum().reset_index().sort_values(by="sales", ascending=False).head(10)
-    chart1 = alt.Chart(sales_by_brand).mark_bar().encode(
-        x='sales:Q', y=alt.Y('brand:N', sort='-x'), color='sales:Q', tooltip=['brand', 'sales']
-    ).properties(height=400)
-    st.altair_chart(chart1, use_container_width=True)
-
-    # Distribución de Ratings
-    st.markdown("### ⭐ Distribución de Ratings")
-    chart2 = alt.Chart(df).mark_bar().encode(
-        x=alt.X("rating:Q", bin=True), y="count():Q", tooltip=["count()"]
-    ).properties(height=300)
-    st.altair_chart(chart2, use_container_width=True)
-
     # Acordes más comunes
     st.markdown("### 💐 Acordes más comunes")
     if any(col.startswith('mainaccord') for col in df.columns):
@@ -71,6 +56,23 @@ with tab_graficos:
             x='count:Q', y=alt.Y('accord:N', sort='-x'), tooltip=['accord', 'count']
         ).properties(height=300)
         st.altair_chart(chart4, use_container_width=True)
+
+    # Distribución de Ratings
+    st.markdown("### ⭐ Distribución de Ratings")
+    chart2 = alt.Chart(df).mark_bar().encode(
+        x=alt.X("rating:Q", bin=True), y="count():Q", tooltip=["count()"]
+    ).properties(height=300)
+    st.altair_chart(chart2, use_container_width=True)
+
+    
+
+    # Ventas por Marca
+    st.markdown("### 🏷️ Ventas por Marca")
+    sales_by_brand = df.groupby("brand")["sales"].sum().reset_index().sort_values(by="sales", ascending=False).head(10)
+    chart1 = alt.Chart(sales_by_brand).mark_bar().encode(
+        x='sales:Q', y=alt.Y('brand:N', sort='-x'), color='sales:Q', tooltip=['brand', 'sales']
+    ).properties(height=400)
+    st.altair_chart(chart1, use_container_width=True)
 
     
 
@@ -103,9 +105,9 @@ with tab_mapa:
 
     layer = pdk.Layer(
         "ScatterplotLayer",
-        data=country_count,
+        data=country_count,  # Usa datos serializables
         get_position='[lon, lat]',
-        get_radius='count * 10000',
+        get_radius='count*100',  # Usa la columna calculada
         get_fill_color='[180, 0, 200, 140]',
         pickable=True
     )
@@ -118,9 +120,15 @@ with tab_mapa:
         layers=[layer],
         tooltip={"text": "{Country}: {count} perfumes"}
     ))
-# ---------- TAB 3: RECOMENDADOR ----------
+# ---------- TAB 4: RECOMENDADOR ----------
+import joblib
+import numpy as np
+
 with tab_modelo:
     st.markdown("## 🤖 Recomendador de Rating de Perfume")
+
+    model = joblib.load("best_rf_perfume_fast.pkl")
+    model_columns = joblib.load("model_columns_perfume.pkl")
 
     def build_input_row_dict(country, gender, tops, middles, bases, accords, model_columns):
         d = {col: 0 for col in model_columns}
@@ -159,7 +167,7 @@ with tab_modelo:
 
     with st.form("perfume_form"):
         # Opciones limpias
-        country_options = sorted(df['country'].dropna().unique()) if 'country' in df.columns else []
+        country_options = sorted(df['Country'].dropna().unique()) if 'Country' in df.columns else []
         gender_options = sorted(df['Gender'].dropna().unique()) if 'Gender' in df.columns else ["Male", "Female", "Unisex"]
 
         top_note_options = get_unique_note_values(df['Top']) if 'Top' in df.columns else []
